@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>家庭实时打卡</title>
+
+    <!-- ====== PWA 独立 App 伪装配置 ====== -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="宝贝打卡">
+    <link rel="apple-touch-icon" href="https://flaticon.com">
+
+    <!-- 1. 引入 Supabase 官方前端 SDK 脚本 -->
+    <script src="https://jsdelivr.net"></script>
+
+    <style>
+        :root { --primary-color: #6C5CE7; --bg-color: #F8F9FA; }
+        body { font-family: -apple-system, sans-serif; background-color: var(--bg-color); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; padding-bottom: env(safe-area-inset-bottom); }
+        .container { width: 100%; max-width: 500px; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); box-sizing: border-box; margin-top: 20px; }
+        h2 { text-align: center; color: #2D3436; margin-bottom: 25px; }
+        .page { display: none; }
+        .active { display: block; }
+        input { width: 100%; padding: 15px; margin-bottom: 20px; border: 2px solid #E2E8F0; border-radius: 12px; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; background-color: var(--primary-color); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .habit-item { display: flex; align-items: center; justify-content: space-between; padding: 18px; background: #F1F2F6; border-radius: 12px; margin-bottom: 12px; font-size: 18px; transition: all 0.2s ease; }
+        .habit-item.completed { background: #DFE4EA; text-decoration: line-through; color: #A4B0BE; }
+        .checkbox { width: 26px; height: 26px; border-radius: 6px; border: 2px solid var(--primary-color); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .completed .checkbox { background: var(--primary-color); }
+        .completed .checkbox::after { content: "✓"; color: white; font-size: 18px; }
+        .logout-btn { background: none; color: #A4B0BE; margin-top: 20px; font-size: 14px; text-decoration: underline; width: auto; }
+    </style>
+</head>
+<body>
+
+    <!-- 登录界面 -->
+    <div id="loginPage" class="container page">
+        <h2>🔑 输入家庭暗号登录</h2>
+        <input type="password" id="passwordInput" placeholder="请输入暗号 (默认: 1234)">
+        <button onclick="handleLogin()">确认登录</button>
+    </div>
+
+    <!-- 主打卡界面 -->
+    <div id="mainPage" class="container page">
+        <h2>🌟 宝贝今日打卡</h2>
+        <div id="habitList">加载中...</div>
+        <center><button class="logout-btn" onclick="handleLogout()">退出登录状态</button></center>
+    </div>
+
+    <script>
+        // ====== 2. 配置您的 Supabase 密钥 (在 Supabase 后台 Project Settings -> API 查看) ======
+        const SUPABASE_URL = "https://supabase.co";
+        const SUPABASE_KEY = "你的anon_public_key";
+        
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const FAMILY_CODE = "1234"; 
+        let habits = [];
+
+        // 页面初始化
+        window.onload = function() {
+            if (localStorage.getItem("isLoggedIn") === "true") {
+                showPage("mainPage");
+                initApp();
+            } else {
+                showPage("loginPage");
+            }
+        };
+
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+        }
+
+        function handleLogin() {
+            if (document.getElementById("passwordInput").value === FAMILY_CODE) {
+                localStorage.setItem("isLoggedIn", "true");
+                showPage("mainPage");
+                initApp();
+            } else {
+                alert("暗号错误！");
+            }
+        }
+
+        // 初始化：拉取数据并开启“跨端实时监听”
+        async function initApp() {
+            await fetchHabits(); // 首次加载当前数据
+            listenToChanges();  // 开启实时同步监听
+        }
+
+        // 从云端数据库拉取打卡数据
+        async function fetchHabits() {
+            const { data, error } = await supabase
+                .from('daily_habits')
+                .select('*')
+                .order('id', { ascending: true });
+            
+            if (!error) {
+                habits = data;
+                renderHabits();
+            }
+        }
+
+        // ⚡️ 核心：实时监听云端数据变动
+        function listenToChanges() {
+            supabase
+                .channel('schema-db-changes')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_habits' }, (payload) => {
+                    // 当收到任何设备的更新广播时，重新拉取并渲染界面
+                    fetchHabits();
+                })
+                .subscribe();
+        }
+
+        // 渲染列表UI
+        function renderHabits() {
+            const listContainer = document.getElementById("habitList");
+            listContainer.innerHTML = "";
+            habits.forEach(habit => {
+                const item = document.createElement("div");
+                item.className = `habit-item ${habit.is_completed ? 'completed' : ''}`;
+                item.innerHTML = `
+                    <span>${habit.habit_name}</span>
+                    <div class="checkbox" onclick="toggleHabit(${habit.id}, ${habit.is_completed})"></div>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        // 点击打卡：直接修改云端数据库
+        async function toggleHabit(id, currentStatus) {
+            const { error } = await supabase
+                .from('daily_habits')
+                .update({ is_completed: !currentStatus })
+                .eq('id', id);
+            
+            if (error) alert("同步失败，请检查网络！");
+        }
+
+        function handleLogout() {
+            localStorage.removeItem("isLoggedIn");
+            showPage("loginPage");
+        }
+    </script>
+</body>
+</html>
