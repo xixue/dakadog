@@ -1,5 +1,207 @@
 <!DOCTYPE html>
-<html>
-<head><title>我的网站</title></head>
-<body><h1>Hello, GitHub Pages!</h1></body>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>宝贝打卡系统</title>
+
+    <!-- ====== PWA 独立 App 伪装核心配置 ====== -->
+    <!-- 允许网页作为独立 WebApp 全屏运行（隐藏 Safari 地址栏） -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- 状态栏样式 -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- 桌面图标显示的 App 名称 -->
+    <meta name="apple-mobile-web-app-title" content="宝贝打卡">
+    <!-- iPad 桌面图标（可替换为您的图片链接） -->
+    <link rel="apple-touch-icon" href="https://flaticon.com">
+
+    <style>
+        :root {
+            --primary-color: #6C5CE7;
+            --bg-color: #F8F9FA;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* 适配 iOS 底部全面屏安全区域 */
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: white;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+            margin-top: 20px;
+        }
+        h2 { text-align: center; color: #2D3436; margin-bottom: 25px; }
+        
+        /* 登录界面样式 */
+        .page { display: none; }
+        .active { display: block; }
+        input {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 2px solid #E2E8F0;
+            border-radius: 12px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* 打卡界面样式 */
+        .habit-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px;
+            background: #F1F2F6;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+        .habit-item.completed {
+            background: #DFE4EA;
+            text-decoration: line-through;
+            color: #A4B0BE;
+        }
+        .checkbox {
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 2px solid var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .completed .checkbox {
+            background: var(--primary-color);
+        }
+        .completed .checkbox::after {
+            content: "✓";
+            color: white;
+            font-size: 18px;
+        }
+        .logout-btn {
+            background: none;
+            color: #A4B0BE;
+            margin-top: 20px;
+            font-size: 14px;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 登录页面 -->
+    <div id="loginPage" class="container page">
+        <h2>🔑 输入家庭暗号登录</h2>
+        <input type="password" id="passwordInput" placeholder="请输入暗号 (默认: 1234)">
+        <button onclick="handleLogin()">确认登录</button>
+    </div>
+
+    <!-- 2. 主打卡页面 -->
+    <div id="mainPage" class="container page">
+        <h2>🌟 宝贝今日打卡</h2>
+        <div id="habitList">
+            <!-- 习惯列表由 JS 动态渲染 -->
+        </div>
+        <button class="logout-btn" onclick="handleLogout()">退出登录状态</button>
+    </div>
+
+    <script>
+        // 设置一个固定的家庭暗号
+        const FAMILY_CODE = "1234"; 
+        
+        // 模拟打卡数据（实际开发中这里可以对接 Supabase）
+        let habits = [
+            { id: 1, name: "早起刷牙 🪥", completed: false },
+            { id: 2, name: "半小时阅读 📚", completed: false },
+            { id: 3, name: "收拾玩具 🧸", completed: false }
+        ];
+
+        // 页面加载时自动检查登录状态
+        window.onload = function() {
+            const isLogin = localStorage.getItem("isLoggedIn");
+            if (isLogin === "true") {
+                showPage("mainPage");
+                renderHabits();
+            } else {
+                showPage("loginPage");
+            }
+        };
+
+        // 切换页面显示
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+        }
+
+        // 处理登录逻辑
+        function handleLogin() {
+            const input = document.getElementById("passwordInput").value;
+            if (input === FAMILY_CODE) {
+                // 关键：在本地存储中记录登录状态，只要不清除，数据会永久保留
+                localStorage.setItem("isLoggedIn", "true");
+                showPage("mainPage");
+                renderHabits();
+            } else {
+                alert("暗号错误，请重新输入！");
+            }
+        }
+
+        // 渲染打卡列表
+        function renderHabits() {
+            const listContainer = document.getElementById("habitList");
+            listContainer.innerHTML = "";
+            
+            habits.forEach(habit => {
+                const item = document.createElement("div");
+                item.className = `habit-item ${habit.completed ? 'completed' : ''}`;
+                item.innerHTML = `
+                    <span>${habit.name}</span>
+                    <div class="checkbox" onclick="toggleHabit(${habit.id})"></div>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        // 点击打卡切换状态
+        function toggleHabit(id) {
+            const habit = habits.find(h => h.id === id);
+            if (habit) {
+                habit.completed = !habit.completed;
+                renderHabits();
+                // 提示：如果要多端共享，应在这里调用 fetch() 将更新同步到云端数据库
+            }
+        }
+
+        // 登出逻辑
+        function handleLogout() {
+            localStorage.removeItem("isLoggedIn");
+            document.getElementById("passwordInput").value = "";
+            showPage("loginPage");
+        }
+    </script>
+</body>
 </html>
